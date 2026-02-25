@@ -42,7 +42,6 @@ On your forked repo press the **period key (`.`)** on your keyboard. This opens 
 ### Step 4 — Read the code first
 Before asking AI for help, spend 5–10 minutes reading `index.html`. Try to answer:
 - What does `parseCSV()` do and why is a custom parser needed?
-- What is the Haversine formula used for?
 - What does the Zippopotam API return and how is it used?
 - Find all `// TODO` comments — what do they tell you about where work needs to be done?
 
