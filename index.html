@@ -136,6 +136,32 @@
       }
 
       /* TODO: Ticket 2 — add popup styles here if needed */
+      .vuln-popup {
+        font-size: 13px;
+        line-height: 1.4;
+      }
+      .vuln-popup h3 {
+        font-size: 14px;
+        margin-bottom: 4px;
+      }
+      .vuln-popup .addr {
+        font-size: 12px;
+        color: #555;
+        margin-bottom: 8px;
+      }
+      .vuln-popup table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      .vuln-popup td {
+        padding: 3px 6px;
+        border-bottom: 1px solid #eee;
+      }
+      .vuln-popup td:last-child {
+        text-align: right;
+        font-weight: bold;
+      }
     </style>
   </head>
   <body>
@@ -312,12 +338,64 @@
       //   LEP         — limited English proficiency
       //
       // Think about: which factors are most relevant to hospital access?
+      async function loadVulnerability() {
+        const text = await fetch(VULN_CSV).then((r) => r.text());
+        const rows = parseCSV(text);
+        const grouped = {};
+        rows.forEach((r) => {
+          const name = (r["NAME"] || "").trim().toUpperCase();
+          if (!name) return;
+          if (!grouped[name])
+            grouped[name] = {
+              pop: 0,
+              older: 0,
+              child: 0,
+              lowInc: 0,
+              dis: 0,
+              lep: 0,
+            };
+          grouped[name].pop += parseFloat(r["POP100_RE"]) || 0;
+          grouped[name].older += parseFloat(r["OLDERADULT"]) || 0;
+          grouped[name].child += parseFloat(r["TOTCHILD"]) || 0;
+          grouped[name].lowInc += parseFloat(r["LOW_TO_NO"]) || 0;
+          grouped[name].dis += parseFloat(r["TOTDIS"]) || 0;
+          grouped[name].lep += parseFloat(r["LEP"]) || 0;
+        });
+        for (const [name, d] of Object.entries(grouped)) {
+          if (d.pop === 0) continue;
+          vulnByNeigh[name] = {
+            olderPct: ((d.older / d.pop) * 100).toFixed(1),
+            childPct: ((d.child / d.pop) * 100).toFixed(1),
+            lowIncPct: ((d.lowInc / d.pop) * 100).toFixed(1),
+            disPct: ((d.dis / d.pop) * 100).toFixed(1),
+            lepPct: ((d.lep / d.pop) * 100).toFixed(1),
+          };
+        }
+      }
 
       // ── TODO: Ticket 2 — add makePopupHTML(hospital, vuln) function here ──
       // Should show:
       // - Hospital name and address
       // - A breakdown table: % elderly, % children under 5,
       //   % low income, % disabilities, % limited English
+      function makePopupHTML(hospital, vuln) {
+        let html = `<div class="vuln-popup">`;
+        html += `<h3>${hospital.NAME}</h3>`;
+        html += `<div class="addr">${hospital.AD || ""}</div>`;
+        if (!vuln) {
+          html += `<em>No vulnerability data for ${hospital.NEIGH || "this neighborhood"}</em>`;
+        } else {
+          html += `<table>`;
+          html += `<tr><td>👴 Elderly (65+)</td><td>${vuln.olderPct}%</td></tr>`;
+          html += `<tr><td>👶 Children (&lt;5)</td><td>${vuln.childPct}%</td></tr>`;
+          html += `<tr><td>💰 Low Income</td><td>${vuln.lowIncPct}%</td></tr>`;
+          html += `<tr><td>♿ Disabilities</td><td>${vuln.disPct}%</td></tr>`;
+          html += `<tr><td>🗣 Limited English</td><td>${vuln.lepPct}%</td></tr>`;
+          html += `</table>`;
+        }
+        html += `</div>`;
+        return html;
+      }
 
       // ── Render sidebar cards ──
       function renderSidebar(matches, markers) {
@@ -381,7 +459,10 @@
 
         // Step 2: fetch hospital CSV
         // TODO: Ticket 2 — also load vulnerability data here using Promise.all
-        const hospText = await fetch(HOSPITAL_CSV).then((r) => r.text());
+        const [hospText] = await Promise.all([
+          fetch(HOSPITAL_CSV).then((r) => r.text()),
+          loadVulnerability(),
+        ]);
         const hospitals = parseCSV(hospText);
 
         // Step 3: extract coordinates from Location field and filter by radius
@@ -422,7 +503,10 @@
         const markers = []; // TODO: Ticket 1 — fill this array with your markers
         matches.forEach((h) => {
           const marker = makeMarker(h.lat, h.lon);
-          marker.bindPopup(`<b>${h.NAME}</b><br>${h.AD || ""}`);
+          // TODO: Ticket 2 — bind popup to each marker: marker.bindPopup(makePopupHTML(h, vuln))
+          const neighKey = (h.NEIGH || "").trim().toUpperCase();
+          const vuln = vulnByNeigh[neighKey] || null;
+          marker.bindPopup(makePopupHTML(h, vuln));
           markers.push(marker);
           markersLayer.addLayer(marker);
         });
